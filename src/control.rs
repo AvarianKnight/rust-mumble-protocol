@@ -262,7 +262,7 @@ macro_rules! define_packet_from {
             type Error = ProtobufError;
 
             fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-                protobuf::parse_from_bytes(bytes)
+                <$type>::parse_from_bytes(bytes)
             }
         }
         impl TryFrom<Bytes> for $type {

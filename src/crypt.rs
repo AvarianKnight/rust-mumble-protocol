@@ -1,18 +1,25 @@
 //! Implementation of the cryptography used for Mumble's voice channel
 
+use aes::cipher::consts::U16;
 use bytes::BytesMut;
-use openssl::memcmp;
-use openssl::rand::rand_bytes;
 use std::convert::TryInto;
 use std::io;
+use std::sync::LazyLock;
 use tokio_util::codec::Decoder;
 use tokio_util::codec::Encoder;
+
+use aes::cipher::generic_array::GenericArray;
+use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
+use aes::Aes128;
+
+use ring::rand::{SecureRandom, SystemRandom};
 
 use crate::voice::Clientbound;
 use crate::voice::Serverbound;
 use crate::voice::VoiceCodec;
 use crate::voice::VoicePacket;
 use crate::voice::VoicePacketDst;
+
 
 /// Maximum size of an encrypted Mumble packet.
 /// Note that larger packets can be produced if there is sufficient voice data in one packet but
@@ -29,14 +36,12 @@ pub const BLOCK_SIZE: usize = std::mem::size_of::<u128>();
 ///
 /// Implements a `Codec` which parses a stream of encrypted data chunks into [VoicePacket]s.
 ///
-/// Note that OCB is covered by patents, however a license has been granted for use in "most"
-/// software. See: http://web.cs.ucdavis.edu/~rogaway/ocb/license.htm
-///
 /// Based on https://github.com/mumble-voip/mumble/blob/e31d267a11b4ed0597ad41309a7f6b715837141f/src/CryptState.cpp
 pub struct CryptState<EncodeDst: VoicePacketDst, DecodeDst: VoicePacketDst> {
     codec: VoiceCodec<EncodeDst, DecodeDst>,
 
     key: [u8; KEY_SIZE],
+    aes: Aes128,
     // internally as native endianness, externally as little endian and during ocb_* as big endian
     encrypt_nonce: u128,
     decrypt_nonce: u128,
@@ -70,12 +75,18 @@ impl<EncodeDst: VoicePacketDst, DecodeDst: VoicePacketDst> CryptState<EncodeDst,
     /// Creates a new CryptState with randomly generated key and initial encrypt- and decrypt-nonce.
     pub fn generate_new() -> Self {
         let mut key = [0; KEY_SIZE];
-        rand_bytes(&mut key).unwrap();
+
+        static CRYPT_SYS_RANDOM: LazyLock<SystemRandom> = LazyLock::new(|| SystemRandom::new());
+
+        CRYPT_SYS_RANDOM
+            .fill(&mut key)
+            .expect("Failed to generate random key");
 
         CryptState {
             codec: VoiceCodec::new(),
 
             key,
+            aes: Aes128::new(GenericArray::from_slice(&key)),
             encrypt_nonce: 0,
             decrypt_nonce: 1 << 127,
             decrypt_history: [0; 0x100],
@@ -96,6 +107,7 @@ impl<EncodeDst: VoicePacketDst, DecodeDst: VoicePacketDst> CryptState<EncodeDst,
             codec: VoiceCodec::new(),
 
             key,
+            aes: Aes128::new(GenericArray::from_slice(&key)),
             encrypt_nonce: u128::from_le_bytes(encrypt_nonce),
             decrypt_nonce: u128::from_le_bytes(decrypt_nonce),
             decrypt_history: [0; 0x100],
@@ -200,7 +212,9 @@ impl<EncodeDst: VoicePacketDst, DecodeDst: VoicePacketDst> CryptState<EncodeDst,
         }
 
         let tag = self.ocb_decrypt(buf.as_mut());
-        if !memcmp::eq(&tag.to_be_bytes()[0..3], &header[1..4]) {
+        if let Err(_e) =
+            ring::constant_time::verify_slices_are_equal(&header[1..4], &tag.to_be_bytes()[0..3])
+        {
             self.decrypt_nonce = saved_nonce;
             return Err(DecryptError::Mac);
         }
@@ -292,35 +306,20 @@ impl<EncodeDst: VoicePacketDst, DecodeDst: VoicePacketDst> CryptState<EncodeDst,
 
     /// AES-128 encryption primitive.
     fn aes_encrypt(&self, block: u128) -> u128 {
-        // TODO is there no better way to do this (and aes_decrypt)?
-        let mut result = [0u8; BLOCK_SIZE * 2];
-        let mut crypter = openssl::symm::Crypter::new(
-            openssl::symm::Cipher::aes_128_ecb(),
-            openssl::symm::Mode::Encrypt,
-            &self.key,
-            None,
-        )
-        .unwrap();
-        crypter.pad(false);
-        crypter.update(&block.to_be_bytes(), &mut result).unwrap();
-        crypter.finalize(&mut result).unwrap();
-        u128::from_be_bytes((&result[..BLOCK_SIZE]).try_into().unwrap())
+        let mut data = block.to_be_bytes();
+        let block: &mut GenericArray<_, U16> = GenericArray::from_mut_slice(&mut data);
+        self.aes.encrypt_block(block);
+
+        u128::from_be_bytes(data)
     }
 
     /// AES-128 decryption primitive.
     fn aes_decrypt(&self, block: u128) -> u128 {
-        let mut result = [0u8; BLOCK_SIZE * 2];
-        let mut crypter = openssl::symm::Crypter::new(
-            openssl::symm::Cipher::aes_128_ecb(),
-            openssl::symm::Mode::Decrypt,
-            &self.key,
-            None,
-        )
-        .unwrap();
-        crypter.pad(false);
-        crypter.update(&block.to_be_bytes(), &mut result).unwrap();
-        crypter.finalize(&mut result).unwrap();
-        u128::from_be_bytes((&result[..BLOCK_SIZE]).try_into().unwrap())
+        let mut data = block.to_be_bytes();
+        let block = GenericArray::from_mut_slice(&mut data);
+        self.aes.decrypt_block(block);
+
+        u128::from_be_bytes(data)
     }
 }
 

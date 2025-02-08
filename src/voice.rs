@@ -151,33 +151,34 @@ impl<EncodeDst: VoicePacketDst, DecodeDst: VoicePacketDst> Decoder
             let session_id = DecodeDst::read_session_id(&mut buf)?;
             let seq_num = buf.read_varint()?;
             let payload = match kind {
-                0 | 2 | 3 => {
-                    let mut frames = Vec::new();
-                    let position = buf.position();
-                    buf_mut.advance(position as usize);
-                    loop {
-                        if buf_mut.is_empty() {
-                            return Err(io::ErrorKind::UnexpectedEof.into());
-                        }
-                        let header = buf_mut[0];
-                        buf_mut.advance(1);
-
-                        let len = (header & !0x80) as usize;
-                        if buf_mut.len() < len {
-                            return Err(io::ErrorKind::UnexpectedEof.into());
-                        }
-                        frames.push(buf_mut.split_to(len).freeze());
-                        if header & 0x80 != 0x80 {
-                            break;
-                        }
-                    }
-                    match kind {
-                        0 => VoicePacketPayload::CeltAlpha(frames),
-                        2 => VoicePacketPayload::Speex(frames),
-                        3 => VoicePacketPayload::CeltBeta(frames),
-                        _ => panic!(),
-                    }
-                }
+                // Mumble spec only supports OPUS now.
+                // 0 | 2 | 3 => {
+                //     let mut frames = Vec::new();
+                //     let position = buf.position();
+                //     buf_mut.advance(position as usize);
+                //     loop {
+                //         if buf_mut.is_empty() {
+                //             return Err(io::ErrorKind::UnexpectedEof.into());
+                //         }
+                //         let header = buf_mut[0];
+                //         buf_mut.advance(1);
+                //
+                //         let len = (header & !0x80) as usize;
+                //         if buf_mut.len() < len {
+                //             return Err(io::ErrorKind::UnexpectedEof.into());
+                //         }
+                //         frames.push(buf_mut.split_to(len).freeze());
+                //         if header & 0x80 != 0x80 {
+                //             break;
+                //         }
+                //     }
+                //     match kind {
+                //         0 => VoicePacketPayload::CeltAlpha(frames),
+                //         2 => VoicePacketPayload::Speex(frames),
+                //         3 => VoicePacketPayload::CeltBeta(frames),
+                //         _ => panic!(),
+                //     }
+                // }
                 4 => {
                     let header = buf.read_varint()?;
                     let position = buf.position();

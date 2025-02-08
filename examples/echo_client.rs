@@ -4,8 +4,8 @@ use argparse::StoreTrue;
 use bytes::Bytes;
 use futures::channel::oneshot;
 use futures::join;
-use futures::StreamExt;
 use futures::SinkExt;
+use futures::StreamExt;
 use mumble_protocol::control::msgs;
 use mumble_protocol::control::ClientControlCodec;
 use mumble_protocol::control::ControlPacket;
@@ -34,7 +34,9 @@ async fn connect(
     let mut crypt_state_sender = Some(crypt_state_sender);
 
     // Connect to server via TCP
-    let stream = TcpStream::connect(&server_addr).await.expect("Failed to connect to server:");
+    let stream = TcpStream::connect(&server_addr)
+        .await
+        .expect("Failed to connect to server:");
     println!("TCP connected..");
 
     // Wrap the connection in TLS
@@ -106,15 +108,12 @@ async fn connect(
             ControlPacket::Reject(msg) => {
                 println!("Login rejected: {:?}", msg);
             }
-            _ => {},
+            _ => {}
         }
     }
 }
 
-async fn handle_udp(
-    server_addr: SocketAddr,
-    crypt_state: oneshot::Receiver<ClientCryptState>,
-) {
+async fn handle_udp(server_addr: SocketAddr, crypt_state: oneshot::Receiver<ClientCryptState>) {
     // Bind UDP socket
     let udp_socket = UdpSocket::bind((Ipv6Addr::from(0u128), 0u16))
         .await
@@ -144,7 +143,9 @@ async fn handle_udp(
             position_info: None,
         },
         server_addr,
-    )).await.unwrap();
+    ))
+    .await
+    .unwrap();
 
     // Handle incoming UDP packets
     while let Some(packet) = source.next().await {
@@ -153,14 +154,14 @@ async fn handle_udp(
             Err(err) => {
                 eprintln!("Got an invalid UDP packet: {}", err);
                 // To be expected, considering this is the internet, just ignore it
-                continue
+                continue;
             }
         };
         match packet {
             VoicePacket::Ping { .. } => {
                 // Note: A normal application would handle these and only use UDP for voice
                 //       once it has received one.
-                continue
+                continue;
             }
             VoicePacket::Audio {
                 seq_num,

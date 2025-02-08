@@ -8,23 +8,25 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/johni0702/rust-mumble-protocol"
 
 [features]
-default = ["openssl"]
+default = []
 webrtc-extensions = []
 
 [build-dependencies]
-protobuf-codegen-pure = "2.14"
+protobuf-codegen-pure = "2.28"
 
 [dependencies]
-bytes = "1.0"
-byteorder = "1"
-tokio-util = { version = "0.6", features = ["codec"] }
-protobuf = "2"
-openssl = { version = "0.10", optional = true }
+bytes = "1.10.0"
+byteorder = "1.5.0"
+tokio-util = { version = "0.7.13", features = ["codec"] }
+protobuf = "2.28"
+block-modes = "0.9.1"
+aes = "0.8.4"
+ring = "0.17.8"
 
 [dev-dependencies]
 argparse = "0.2"
-futures = "0.3"
+futures = "0.3.31"
 native-tls = "0.2"
-tokio = { version = "1.0", features = ["full"] }
-tokio-util = { version = "0.6", features = ["codec", "net"] }
-tokio-native-tls = "0.3"
+tokio = { version = "1.43", features = ["full"] }
+tokio-util = { version = "0.7.13", features = ["codec", "net"] }
+tokio-native-tls = "0.3.1"

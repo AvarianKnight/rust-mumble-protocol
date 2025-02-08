@@ -10,11 +10,14 @@ fn main() {
 
     protobuf_codegen_pure::Codegen::new()
         .out_dir(&out_dir)
-        .inputs(&[if cfg!(feature = "webrtc-extensions") {
-            "protos/MumbleWithWebRTC.proto"
-        } else {
-            "protos/Mumble.proto"
-        }])
+        .inputs(&[
+            if cfg!(feature = "webrtc-extensions") {
+                "protos/MumbleWithWebRTC.proto"
+            } else {
+                "protos/Mumble.proto"
+            },
+            "protos/MumbleUDP.proto",
+        ])
         .includes(&["protos"])
         .customize(protobuf_codegen_pure::Customize {
             generate_accessors: Some(true),
